@@ -63,6 +63,8 @@ apt update -y
   <em>Gambar 1: Update Paket Ubuntu Server</em>
 </p>
 
+### Instalasi PowerDNS
+
 Tunggu proses update hingga benar-benar selesai, dan selanjutnya install paket PowerDNS menggunakan perintah : 
 
 ```
@@ -92,6 +94,8 @@ Kemudian, aktifkan dan pastikan service PowerDNS berjalan dengan baik menggunaka
 ```
 systemctl status pdns
 ```
+### Instalasi Database Backend
+
 PowerDNS dapat menggunakan berbagai jenis *backend* untuk menyimpan data DNS. Pada praktik ini, digunakan MariaDB sebagai *database backend*.
 
 Instal MariaDB dengan menjalankan perintah berikut:
@@ -106,75 +110,247 @@ systemctl status mariadb
 ```
 
 Selanjutnya, install backend MariaDB untuk PowerDNS menggunakan perintah berikut:
+```
+apt install pdns-backend-mysql
+```
+
+### Membuat Database PowerDNS
+
+Masuk atau *login* ke MariaDB sebagai pengguna *root* dengan menjalankan perintah berikut:
+```
+mysql -u root -p
+```
+
+Kemudian, buat sebuah database baru untuk PowerDNS menggunakan perintah:
+```
+CREATE DATABASE powerdns;
+```
+
+Buat user baru untuk mengakses database tersebut (pastikan mengganti 'PASSWORD' dengan kata sandi yang Anda inginkan):
+```
+CREATE USER 'powerdns'@'localhost' IDENTIFIED BY 'PASSWORD';
+```
+
+Berikan hak akses penuh kepada user tersebut pada database PowerDNS:
+```
+GRANT ALL PRIVILEGES ON powerdns.* TO 'powerdns'@'localhost';
+```
+
+Terakhir, perbarui hak istimewa (privileges) dengan menjalankan perintah:
+```
+FLUSH PRIVILEGES;
+```
+
+### Import Database Schema PowerDNS
+
+Setelah *backend* MariaDB PowerDNS berhasil diinstal, cari file *schema* yang tersedia pada sistem dengan menjalankan perintah berikut:
+```
+ls /usr/share/doc/pdns-backend-mysql/
+```
+
+Kalau ingin mencari file SQL secara lebih spesifik, Anda bisa menggunakan perintah:
+```
+find /usr/share -type f -iname "*.sql" | grep -i pdns
+```
+
+Maka lakukan import menggunakan path tersebut
+```
+mysql -u powerdns -p powerdns < /usr/share/pdns-backend-mysql/schema/schema.mysql.sql
+```
+(Saat diminta password, masukkan password user powerdns yang sudah Anda buat sebelumnya).
+
+Setelah proses selesai, silakan login kembali ke database untuk memastikan tabel-tabelnya sudah terbuat:
+```
+mysql -u powerdns -p powerdns
+```
+
+Kemudian cek tabel untuk memastikan schema berhasil di-import dan tabel-tabel yang dibutuhkan PowerDNS muncul:
+```
+SHOW TABLES;
+```
+
+### Konfigurasi Backend PowerDNS
+
+Nah, setelah *schema* masuk ke *database*, baru kita beri tahu PowerDNS bahwa data DNS disimpan di dalam *database* MariaDB.
+
+Edit file konfigurasi utama PowerDNS dengan menggunakan editor teks `nano`:
+```
+nano /etc/powerdns/pdns.conf
+```
+
+Tambahkan atau sesuaikan konfigurasi backend database di dalam file tersebut seperti berikut:
+```
+launch=gmysql
+gmysql-host=127.0.0.1
+gmysql-user=powerdns
+gmysql-password=password
+gmysql-dbname=powerdns
+```
+
+Setelah konfigurasi disimpan, restart service PowerDNS untuk menerapkan perubahan:
+```
+systemctl restart pdns
+```
+
+Kemudian cek kembali status service PowerDNS untuk memastikan semuanya berjalan dengan normal:
+```
+systemctl status pdns
+```
+Pastikan statusnya menunjukkan keterangan active (running):
+
+### Membuat DNS Zone
+
+Setelah *backend* berhasil dikonfigurasi, langkah selanjutnya adalah membuat DNS *Zone* untuk domain yang akan digunakan.
+
+*Login* kembali ke *database* PowerDNS menggunakan perintah berikut:
+```
+mysql -u powerdns -p powerdns
+```
+
+Kemudian buat zone domain baru dengan memasukkan query SQL berikut
+```
+INSERT INTO domains (name, type) VALUES ('domainkamu.id', 'NATIVE');
+```
+
+Setelah itu, cek apakah zone tersebut sudah berhasil tersimpan dengan menjalankan perintah:
+```
+SELECT * FROM domains;
+```
+
+### Menambahkan DNS Record
+
+Setelah DNS *Zone* berhasil dibuat, langkah berikutnya adalah menambahkan berbagai macam DNS *Record* yang diperlukan ke dalam *database*.
+#### A Record
+*A Record* digunakan untuk mengarahkan domain utama ke alamat IP *server* Anda:
+```
+INSERT INTO records (domain_id, name, type, content, ttl) 
+VALUES (1, 'domainkamu.id', 'A', 'IP_SERVER', 3600);
+```
+
+#### NS Record
+Tambahkan nameserver yang akan digunakan oleh domain Anda:
+```
+INSERT INTO records (domain_id, name, type, content, ttl) 
+VALUES 
+(1, 'domainkamu.id', 'NS', 'ns1.domainkamu.id', 3600),
+(1, 'domainkamu.id', 'NS', 'ns2.domainkamu.id', 3600);
+```
+
+#### A Record untuk Nameserver
+Karena nameserver yang digunakan merupakan child nameserver, tambahkan A Record untuk masing-masing nameserver tersebut:
+```
+INSERT INTO records (domain_id, name, type, content, ttl) 
+VALUES 
+(1, 'ns1.domainkamu.id', 'A', 'IP_SERVER', 3600),
+(1, 'ns2.domainkamu.id', 'A', 'IP_SERVER', 3600);
+```
+
+#### CNAME Record
+Jika Anda ingin mengarahkan subdomain www ke domain utama, tambahkan CNAME Record berikut:
+```
+INSERT INTO records (domain_id, name, type, content, ttl) 
+VALUES 
+(1, 'www.domainkamu.id', 'CNAME', 'domainkamu.id', 3600);
+```
+### Mengecek DNS Zone dan Record
+Setelah seluruh *record* ditambahkan ke dalam *database*, langkah terakhir adalah memeriksa kembali seluruh data yang telah dibuat untuk memastikan semuanya sudah terkonfigurasi dengan benar.
+
+Jalankan *query* SQL berikut di dalam MariaDB:
+```
+SELECT name, type, content, ttl FROM records;
+```
+
+Pastikan record yang muncul sudah sesuai dengan konfigurasi.
+```
+domainkamu.id          A       IP_SERVER
+domainkamu.id          NS      ns1.domainkamu.id
+domainkamu.id          NS      ns2.domainkamu.id
+ns1.domainkamu.id      A       IP_SERVER
+ns2.domainkamu.id      A       IP_SERVER
+www.domainkamu.id      CNAME   domainkamu.id
+```
+
+### Restart PowerDNS
+Setelah seluruh konfigurasi dan penambahan record selesai, lakukan restart terakhir pada service PowerDNS untuk menerapkan semua pembaruan secara sempurna, lalu pastikan kembali bahwa service telah berjalan dengan normal dan stabil:
+```
+#systemctl restart pdns
+#systemctl status pdns
+● pdns.service - PowerDNS Authoritative Server
+     Loaded: loaded (/usr/lib/systemd/system/pdns.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-09-12 21:36:42 WIB; 7s ago
+       Docs: man:pdns_server(1)
+             man:pdns_control(1)
+             https://doc.powerdns.com
+   Main PID: 329879 (pdns_server)
+      Tasks: 8 (limit: 1094)
+     Memory: 47.8M (peak: 48.0M)
+        CPU: 171ms
+     CGroup: /system.slice/pdns.service
+```
+
 # 4. Verifikasi
-### This is a Heading h2
-###### This is a Heading h6
+### Mengecek Port DNS
+Layanan DNS menggunakan port `53` (baik protokol UDP maupun TCP) untuk menerima setiap *query* atau permintaan DNS yang masuk dari klien.
 
-## Emphasis
+Untuk mengecek apakah port tersebut sudah digunakan dan aktif oleh PowerDNS, jalankan perintah berikut di terminal:
+```
+#ss -lntup | grep :53
+udp   UNCONN 0      0            0.0.0.0:53        0.0.0.0:*    users:(("pdns_server",pid=329879,fd=5))
+udp   UNCONN 0      0               [::]:53           [::]:*    users:(("pdns_server",pid=329879,fd=6))
+tcp   LISTEN 0      128          0.0.0.0:53        0.0.0.0:*    users:(("pdns_server",pid=329879,fd=7))
+tcp   LISTEN 0      128             [::]:53           [::]:*    users:(("pdns_server",pid=329879,fd=8))
+```
 
-*This text will be italic*  
-_This will also be italic_
+### Pengujian DNS Server Menggunakan dig
 
-**This text will be bold**  
-__This will also be bold__
+Setelah layanan PowerDNS aktif dan seluruh konfigurasi selesai, lakukan pengujian fungsionalitas DNS menggunakan utilitas `dig`.
 
-_You **can** combine them_
+Pertama, lakukan pengujian *query* terhadap DNS yang telah dibuat dengan perintah:
+#### Cek DNS Zone
+```
+#dig @IP_SERVER domainkamu.id
+```
+Jika berhasil, akan muncul bagian **ANSWER SECTION** yang berisi IP Address domain.
 
-## Lists
+#### Cek NS Record
+```
+#dig @IP_SERVER domainkamu.id NS
+domainkamu.id.    NS    ns1.domainkamu.id.
+domainkamu.id.    NS    ns2.domainkamu.id.
+```
+#### Pengujian Nameserver dari Domain
+```
+#dig domainkamu.id NS
+ns1.domainkamu.id
+ns2.domainkamu.id
+```
 
-### Unordered
+#### Pengujian Domain
+```
+#dig domainkamu.id +short
+IP_SERVER
+```
 
-* Item 1
-* Item 2
-* Item 2a
-* Item 2b
-    * Item 3a
-    * Item 3b
+### Verifikasi Menggunakan DNS Checker
+Apabila hasil *output* IP Address sudah mengarah ke IP Address *server* yang digunakan, maka hasil *pointing* domain sudah *resolved*.
 
-### Ordered
+Selain itu, Anda juga dapat memeriksa hasil *pointing* lebih lanjut menggunakan *tools* berbasis web seperti [DNS Checker](https://dnschecker.org/). Jika sudah resolved semua, maka akan ditandai dengan centang warna hijau secara keseluruhan pada tool DNS Checker seperti pada Gambar 26.
 
-1. Item 1
-2. Item 2
-3. Item 3
-    1. Item 3a
-    2. Item 3b
+GAMBAR
 
-## Images
+Apabila dari hasil verifikasi, hasil pointing domain masih belum mengarah ke IP Address server yang digunakan atau masih belum terdapat tanda centang hijau secara keseluruhan pada tool DNS Checker, biasanya hal tersebut masih berada dalam proses propagasi.
 
-![This is an alt text.](/image/Markdown-mark.svg "This is a sample image.")
-
-## Links
-
-You may be using [Markdown Live Preview](https://markdownlivepreview.com/).
-
-## Blockquotes
-
-> Markdown is a lightweight markup language with plain-text-formatting syntax, created in 2004 by John Gruber with Aaron Swartz.
+> _Propagasi adalah waktu yang dibutuhkan oleh internet atau ISP untuk mengenali record-record DNS yang baru pada sebuah domain (biasanya dibutuhkan ketika terjadi perubahan pada record-record DNS). Pada saat proses propagasi berlangsung, domain terkadang akan mengalami anomali ketika diakses._
 >
->> Markdown is often used to format readme files, for writing messages in online discussion forums, and to create rich text using a plain text editor.
+>> _Proses propagasi ini dipengaruhi oleh beberapa faktor, yaitu pengaturan TTL (Time to Live), jaringan ISP, serta pihak Registry domain. Waktu yang dibutuhkan untuk proses propagasi ini biasanya memakan waktu kurang lebih hingga 48 jam._
 
-## Tables
+# Kesimpulan
+Dengan memahami konsep dan cara kerja PowerDNS, kamu bisa membangun layanan DNS Authoritative pada VPS secara lebih fleksibel dan terkelola. Dengan dukungan MariaDB sebagai backend, konfigurasi zone dan record DNS dapat disimpan serta dikelola dengan lebih terstruktur sesuai kebutuhan.
 
-| Left columns  | Right columns |
-| ------------- |:-------------:|
-| left foo      | right foo     |
-| left bar      | right bar     |
-| left baz      | right baz     |
+Setelah PowerDNS berhasil dikonfigurasi, kamu dapat mengelola domain, nameserver, serta DNS record melalui database dan melakukan pengecekan untuk memastikan layanan DNS berjalan dengan baik.
 
-## Blocks of code
+Sekian, dan semoga bermanfaat.
 
-```
-let message = 'Hello world';
-alert(message);
-```
-
-## Mermaid diagrams
-```mermaid
-graph TD
-  A[Start] --> B{Decision}
-  B -->|Yes| C[Finish]
-  B -->|No| D[Alternate]
-```
 
 ## Inline code
 
