@@ -3,7 +3,7 @@
 # Instalasi dan Konfigurasi DNS Server Menggunakan PowerDNS pada Ubuntu 24.04 LTS
 
 Pelajari cara instalasi dan konfigurasi DNS Server menggunakan BIND di Kilat VM 2.0 berbasis Ubuntu 18.04. Panduan lengkap mulai dari persiapan, setup Glue Record, hingga konfigurasi zona domain.
-***<img width="1352" height="555" alt="apt update" src="https://github.com/user-attachments/assets/1f01a2e5-f9f0-48c6-883e-c840cc2ffa29" />
+***
 
 Halo, Kawan Belajar!
 
@@ -41,7 +41,6 @@ Sebelum melakukan konfigurasi PowerDNS, pastikan domain telah memiliki **Glue Re
 
 Glue Record merupakan informasi IP Address yang digunakan oleh suatu nameserver dan didaftarkan pada registrar domain.
 
-Adapun panduan cara setup Glue Record seperti berikut ini:
 
 Adapun panduan cara setup Glue Record seperti berikut ini:
 
@@ -61,9 +60,52 @@ apt update -y
 <p align="center">
   <img width="1352" height="555" alt="apt update" src="https://github.com/user-attachments/assets/5fa107d5-5933-4f65-b352-50bca91f8a1e" />
   <br>
-  <em>Gambar 5: Update Paket Ubuntu Server</em>
+  <em>Gambar 1: Update Paket Ubuntu Server</em>
 </p>
 
+Tunggu proses update hingga benar-benar selesai, dan selanjutnya install paket PowerDNS menggunakan perintah : 
+
+```
+apt install pdns-server
+```
+
+tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 2:
+<p align="center">
+  <img width="1202" height="241" alt="install powerdns (y)" src="https://github.com/user-attachments/assets/222dbb7f-2e98-4efb-ae31-1da58e6d8bd5" />
+  <br>
+  <em>Gambar 2: Instalasi PowerDNS</em>
+</p>
+
+Setelah proses instalasi selesai, Anda dapat memeriksa versi PowerDNS yang terinstal menggunakan perintah sebagai berikut:
+
+```
+pdns_server --version
+```
+<p align="center">
+  <img width="1360" height="347" alt="versi powerdns" src="https://github.com/user-attachments/assets/8f2ffb58-6ae8-4c6c-9759-8e52315b8220" />
+  <br>
+  <em>Gambar 3: Versi PowerDNS</em>
+</p>
+
+Kemudian, aktifkan dan pastikan service PowerDNS berjalan dengan baik menggunakan perintah status berikut, dan pastikan statusnya bernilai active (running):
+
+```
+systemctl status pdns
+```
+PowerDNS dapat menggunakan berbagai jenis *backend* untuk menyimpan data DNS. Pada praktik ini, digunakan MariaDB sebagai *database backend*.
+
+Instal MariaDB dengan menjalankan perintah berikut:
+```
+apt install mariadb-server
+```
+tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 4:
+
+Setelah instalasi selesai, cek service MariaDB untuk memastikan berjalan dengan normal:
+```
+systemctl status mariadb
+```
+
+Selanjutnya, install backend MariaDB untuk PowerDNS menggunakan perintah berikut:
 # 4. Verifikasi
 ### This is a Heading h2
 ###### This is a Heading h6
@@ -137,4 +179,5 @@ graph TD
 ## Inline code
 
 This web site is using `markedjs/marked`.
-<img width="1352" height="555" alt="apt update" src="https://github.com/user-attachments/assets/5fa107d5-5933-4f65-b352-50bca91f8a1e" />
+<img width="1360" height="347" alt="versi powerdns" src="https://github.com/user-attachments/assets/8f2ffb58-6ae8-4c6c-9759-8e52315b8220" />
+
