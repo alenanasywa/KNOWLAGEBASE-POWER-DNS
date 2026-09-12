@@ -179,5 +179,6 @@ graph TD
 ## Inline code
 
 This web site is using `markedjs/marked`.
-<img width="1360" height="347" alt="versi powerdns" src="https://github.com/user-attachments/assets/8f2ffb58-6ae8-4c6c-9759-8e52315b8220" />
+<img width="1366" height="287" alt="isi nano" src="https://github.com/user-attachments/assets/1439c605-b827-48d5-9f25-b1ba3a784a03" />
+
 
