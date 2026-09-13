@@ -1,5 +1,4 @@
 
-
 # Instalasi dan Konfigurasi DNS Server Menggunakan PowerDNS pada Ubuntu 24.04 LTS
 
 Pelajari cara instalasi dan konfigurasi DNS Server menggunakan BIND di Kilat VM 2.0 berbasis Ubuntu 18.04. Panduan lengkap mulai dari persiapan, setup Glue Record, hingga konfigurasi zona domain.
@@ -20,12 +19,19 @@ Pada panduan kali ini, akan dilakukan instalasi dan konfigurasi **PowerDNS pada 
 
 **Cara kerja PowerDNS** secara sederhana adalah ketika pengguna mengakses suatu domain, permintaan DNS akan diteruskan ke **Nameserver** yang menggunakan PowerDNS. PowerDNS kemudian mencari informasi domain pada **DNS Zone** dan **DNS Record** yang telah dikonfigurasi, lalu mengembalikan hasilnya kepada pengguna.
 
-**Fungsi PowerDNS** antara lain:
+### Fungsi PowerDNS
+PowerDNS memiliki beberapa fungsi antara lain:
 * Menjadi DNS Server untuk sebuah domain.
 * Mengelola DNS Zone dan DNS Record.
 * Menjawab permintaan DNS dari client.
 * Mendukung berbagai jenis DNS Record seperti A, AAAA, CNAME, MX, NS, dan TXT.
 * Dapat menggunakan database sebagai tempat penyimpanan data DNS, tergantung backend yang digunakan.
+
+### Kekurangan PowerDNS
+Adapun beberapa kekurangan PowerDNS yang perlu dipertimbangkan antara lain:
+* Kompleksitas Konfigurasi Awal: Pengaturan awal cukup rumit karena membutuhkan konfigurasi database backend tambahan.
+* Ketergantungan pada Database: Layanan DNS akan langsung mati total jika database (MariaDB) mengalami gangguan.
+* Konsumsi Sumber Daya: Penggunaan database membuat PowerDNS membutuhkan lebih banyak RAM dan CPU pada trafik tinggi.
 
 # 2. Persiapan
 
@@ -33,10 +39,24 @@ Untuk melakukan instalasi dan konfigurasi DNS Server menggunakan PowerDNS, beber
 * Domain dan Kilat VM 2.0 aktif.
 * Sistem operasi Ubuntu 24.04.
 * Setup Glue Record.
-
+* IP Address publik pada Kilat VM.
+  
 Jika belum memiliki Kilat VM 2.0, pengguna dapat melakukan pemesanan layanan Kilat VM 2.0 melalui CloudKilat.
+
+## Informasi Versi Sistem
+Panduan ini menggunakan komponen dan versi perangkat lunak berikut:
+
+| Komponen  | Versi |
+| ------------- |:-------------:|
+| Sistem Operasi      | Ubuntu 24.04 LTS     |
+| PowerDNS Server      | 4.8.3 (Package Ubuntu 24.04)     |
+| Database Backend      | MariaDB Server     |
+| DNS Utilities      | `dig`     |
+
+> **Catatan:** Versi PowerDNS dapat berubah seiring adanya *release* terbaru. Versi yang digunakan pada panduan ini adalah PowerDNS 4.8.3
+
 # 3. Instalasi dan Konfigurasi
-### a. Setup Glue Record
+## a. Setup Glue Record
 Sebelum melakukan konfigurasi PowerDNS, pastikan domain telah memiliki **Glue Record** apabila menggunakan nameserver sendiri.
 
 Glue Record merupakan informasi IP Address yang digunakan oleh suatu nameserver dan didaftarkan pada registrar domain.
@@ -46,7 +66,7 @@ Adapun panduan cara setup Glue Record seperti berikut ini:
 
 1. [Login Portal Client Area CloudKilat](https://portal.cloudkilat.com/clientarea) terlebih dahulu.
 2. Untuk langkah-langkah lengkapnya, Anda dapat mengikuti panduan resmi melalui tautan [Cara Menggunakan Private Name Server pada Domain di Portal Client CloudKilat](https://kb.cloudkilat.id/domain-di-cloudkilat/cara-menggunakan-private-name-server-pada-domain-di-portal-client-cloudkilat).
-### b. Install dan Konfigurasi PowerDNS
+## b. Install dan Konfigurasi PowerDNS
 Selanjutya, untuk melakukan instalasi dan konfigurasi DNS Server, silakan mengikuti langkah-langkah berikut ini:
 
 Masuk ke Kilat VM 2.0 Anda terlebih dahulu, atau Anda juga bisa melakukan *remote* menggunakan SSH. Jika Anda masih belum mengetahui cara *remote* menggunakan SSH, silakan membaca panduannya melalui tautan [Cara Akses Kilat VM Melalui SSH](https://kb.cloudkilat.id/akses-kilat-vm/cara-akses-kilat-vm-melalui-ssh).
@@ -63,7 +83,51 @@ apt update -y
   <em>Gambar 1: Update Paket Ubuntu Server</em>
 </p>
 
-### Instalasi PowerDNS
+## Menonaktifkan DNS Stub Listener Ubuntu
+Pada Ubuntu 24.04, terdapat *service* `systemd-resolved` yang membantu sistem melakukan koneksi ke DNS. *Service* ini menggunakan port 53 melalui fitur *DNS Stub Listener* (`127.0.0.53:53`).
+
+PowerDNS juga membutuhkan port 53 untuk menerima permintaan DNS. Jika port tersebut sudah digunakan oleh `systemd-resolved`, PowerDNS tidak dapat berjalan karena mengalami konflik pada port yang sama.
+
+Periksa terlebih dahulu penggunaan port 53 pada *server* Anda:
+```
+#ss -lntup | grep ':53'
+udp UNCONN 0 0 127.0.0.54:53 0.0.0.0:* users:(("systemd-resolve",pid=468,fd=16))
+udp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:* users:(("systemd-resolve",pid=468,fd=14))
+```
+> **Catatan:** Jika terdapat proses `systemd-resolved` yang menggunakan port `53`, Anda perlu mengubah konfigurasi `systemd-resolved`.
+
+Buka file konfigurasi `resolved.conf` menggunakan editor teks `nano`:
+```
+nano /etc/systemd/resolved.conf
+```
+
+Cari bagian `[Resolve]`, lalu tambahkan atau ubah konfigurasi baris berikut menjadi:
+```
+[Resolve]
+DNSStubListener=no
+```
+
+<p align="center">
+<img width="916" height="565" alt="isi systemd-resolved" src="https://github.com/user-attachments/assets/a629e7d9-c257-452b-8a66-985c2ba99f31" />
+  <br>
+  <em>Gambar 2: Konfig DNS Stub</em>
+</p>
+
+Simpan konfigurasi dengan menekan tombol **Ctrl + O**, lalu Enter, dan keluar dengan **Ctrl + X**.
+
+Setelah itu, _restart service_ `systemd-resolved` agar perubahan diterapkan:
+```
+systemctl restart systemd-resolved
+```
+
+Periksa kembali penggunaan port `53` untuk memastikan konflik telah teratasi:
+```
+ss -lntup | grep ':53'
+```
+
+> **Catatan:** Langkah ini hanya mematikan fungsi DNS stub listener pada `systemd-resolved` tanpa menghentikan service tersebut secara total, sehingga koneksi internet serta resolver pada VPS Anda dipastikan tetap berjalan dengan normal.
+
+## Instalasi PowerDNS
 
 Tunggu proses update hingga benar-benar selesai, dan selanjutnya install paket PowerDNS menggunakan perintah : 
 
@@ -75,7 +139,7 @@ tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gamb
 <p align="center">
   <img width="1202" height="241" alt="install powerdns (y)" src="https://github.com/user-attachments/assets/222dbb7f-2e98-4efb-ae31-1da58e6d8bd5" />
   <br>
-  <em>Gambar 2: Instalasi PowerDNS</em>
+  <em>Gambar 3: Instalasi PowerDNS</em>
 </p>
 
 Setelah proses instalasi selesai, Anda dapat memeriksa versi PowerDNS yang terinstal menggunakan perintah sebagai berikut:
@@ -86,15 +150,30 @@ pdns_server --version
 <p align="center">
   <img width="1360" height="347" alt="versi powerdns" src="https://github.com/user-attachments/assets/8f2ffb58-6ae8-4c6c-9759-8e52315b8220" />
   <br>
-  <em>Gambar 3: Versi PowerDNS</em>
+  <em>Gambar 4: Versi PowerDNS</em>
 </p>
+
+> **Catatan:** Versi PowerDNS dapat berubah seiring adanya *release* terbaru.
 
 Kemudian, aktifkan dan pastikan service PowerDNS berjalan dengan baik menggunakan perintah status berikut, dan pastikan statusnya bernilai active (running):
 
 ```
-systemctl status pdns
+#systemctl status pdns
+● pdns.service - PowerDNS Authoritative Server
+     Loaded: loaded (/usr/lib/systemd/system/pdns.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-09-12 21:36:42 WIB; 24h ago
+       Docs: man:pdns_server(1)
+             man:pdns_control(1)
+             https://doc.powerdns.com
+   Main PID: 329879 (pdns_server)
+      Tasks: 8 (limit: 1094)
+     Memory: 47.9M (peak: 48.2M)
+        CPU: 4.323s
+     CGroup: /system.slice/pdns.service
+             └─329879 /usr/sbin/pdns_server --guardian=no --daemon=no --disable-syslog --log-timestamp=no>
 ```
-### Instalasi Database Backend
+
+## Instalasi Database Backend
 
 PowerDNS dapat menggunakan berbagai jenis *backend* untuk menyimpan data DNS. Pada praktik ini, digunakan MariaDB sebagai *database backend*.
 
@@ -103,18 +182,40 @@ Instal MariaDB dengan menjalankan perintah berikut:
 apt install mariadb-server
 ```
 tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 4:
+<p align="center">
+<img width="1359" height="387" alt="install mariadb" src="https://github.com/user-attachments/assets/fb97b494-bee4-4303-a91a-c1daa909f4b0" />
+  <br>
+  <em>Gambar 5: Instal MariaDB</em>
+</p>
 
 Setelah instalasi selesai, cek service MariaDB untuk memastikan berjalan dengan normal:
 ```
-systemctl status mariadb
+#systemctl status mariadb
+● mariadb.service - MariaDB 10.11.14 database server
+     Loaded: loaded (/usr/lib/systemd/system/mariadb.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-09-12 12:16:49 WIB; 1 day 10h ago
+       Docs: man:mariadbd(8)
+             https://mariadb.com/kb/en/library/systemd/
+   Main PID: 293006 (mariadbd)
+     Status: "Taking your SQL requests now..."
+      Tasks: 10 (limit: 7226)
+     Memory: 93.7M (peak: 94.9M)
+        CPU: 24.211s
+     CGroup: /system.slice/mariadb.service
+             └─293006 /usr/sbin/mariadbd
 ```
 
 Selanjutnya, install backend MariaDB untuk PowerDNS menggunakan perintah berikut:
 ```
 apt install pdns-backend-mysql
 ```
+<p align="center">
+<img width="1366" height="523" alt="install backend mariadb" src="https://github.com/user-attachments/assets/39bc39ba-dc1a-4e45-bb25-965188e1aa20" />
+  <br>
+  <em>Gambar 6: Instal Backend MariaDB</em>
+</p>
 
-### Membuat Database PowerDNS
+## Membuat Database PowerDNS
 
 Masuk atau *login* ke MariaDB sebagai pengguna *root* dengan menjalankan perintah berikut:
 ```
@@ -126,10 +227,11 @@ Kemudian, buat sebuah database baru untuk PowerDNS menggunakan perintah:
 CREATE DATABASE powerdns;
 ```
 
-Buat user baru untuk mengakses database tersebut (pastikan mengganti 'PASSWORD' dengan kata sandi yang Anda inginkan):
+Buat user baru untuk mengakses database tersebut 
 ```
 CREATE USER 'powerdns'@'localhost' IDENTIFIED BY 'PASSWORD';
 ```
+> **Catatan:** Ganti 'PASSWORD' dengan kata sandi yang kuat dan aman (kombinasi huruf besar, huruf kecil, angka, dan simbol) untuk menghindari risiko keamanan pada database Anda.
 
 Berikan hak akses penuh kepada user tersebut pada database PowerDNS:
 ```
@@ -140,8 +242,9 @@ Terakhir, perbarui hak istimewa (privileges) dengan menjalankan perintah:
 ```
 FLUSH PRIVILEGES;
 ```
+> **Catatan:** Apabila proses konfigurasi database telah selesai dan Anda ingin keluar dari prompt MariaDB, gunakan perintah `exit;`.
 
-### Import Database Schema PowerDNS
+## Import Database Schema PowerDNS
 
 Setelah *backend* MariaDB PowerDNS berhasil diinstal, cari file *schema* yang tersedia pada sistem dengan menjalankan perintah berikut:
 ```
@@ -153,11 +256,17 @@ Kalau ingin mencari file SQL secara lebih spesifik, Anda bisa menggunakan perint
 find /usr/share -type f -iname "*.sql" | grep -i pdns
 ```
 
-Maka lakukan import menggunakan path tersebut
+Kemudian lakukan import menggunakan path tersebut
 ```
 mysql -u powerdns -p powerdns < /usr/share/pdns-backend-mysql/schema/schema.mysql.sql
 ```
-(Saat diminta password, masukkan password user powerdns yang sudah Anda buat sebelumnya).
+<p align="center">
+<img width="903" height="97" alt="impor schema" src="https://github.com/user-attachments/assets/f6e61714-468c-432e-98b9-e5a4bd888930" />
+  <br>
+  <em>Gambar 7: Impor File</em>
+</p>
+
+> **Catatan:** Saat diminta password, masukkan password user powerdns yang sudah Anda buat sebelumnya
 
 Setelah proses selesai, silakan login kembali ke database untuk memastikan tabel-tabelnya sudah terbuat:
 ```
@@ -168,8 +277,14 @@ Kemudian cek tabel untuk memastikan schema berhasil di-import dan tabel-tabel ya
 ```
 SHOW TABLES;
 ```
+<p align="center">
+<img width="577" height="261" alt="show tables" src="https://github.com/user-attachments/assets/8c09928b-5e50-4a67-a4d1-23e9f79fa3ba" />
+  <br>
+  <em>Gambar 8: Show Tables</em>
+</p>
 
-### Konfigurasi Backend PowerDNS
+
+## Konfigurasi Backend PowerDNS
 
 Nah, setelah *schema* masuk ke *database*, baru kita beri tahu PowerDNS bahwa data DNS disimpan di dalam *database* MariaDB.
 
@@ -186,6 +301,11 @@ gmysql-user=powerdns
 gmysql-password=password
 gmysql-dbname=powerdns
 ```
+<p align="center">
+<img width="1366" height="287" alt="isi nano" src="https://github.com/user-attachments/assets/afff038b-ad69-4d23-b8ff-5fa716e9ff36" />
+  <br>
+  <em>Gambar 9: File Pdns</em>
+</p>
 
 Setelah konfigurasi disimpan, restart service PowerDNS untuk menerapkan perubahan:
 ```
@@ -194,11 +314,23 @@ systemctl restart pdns
 
 Kemudian cek kembali status service PowerDNS untuk memastikan semuanya berjalan dengan normal:
 ```
-systemctl status pdns
+#systemctl status pdns
+● pdns.service - PowerDNS Authoritative Server
+     Loaded: loaded (/usr/lib/systemd/system/pdns.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-09-12 21:36:42 WIB; 1 day 1h ago
+       Docs: man:pdns_server(1)
+             man:pdns_control(1)
+             https://doc.powerdns.com
+   Main PID: 329879 (pdns_server)
+      Tasks: 8 (limit: 1094)
+     Memory: 47.9M (peak: 48.2M)
+        CPU: 4.611s
+     CGroup: /system.slice/pdns.service
+             └─329879 /usr/sbin/pdns_server --guardian=no --daemon=no --disable-syslog --log-timestamp=no>
 ```
-Pastikan statusnya menunjukkan keterangan active (running):
+> **Catatan:** Pastikan statusnya menunjukkan keterangan active (running):
 
-### Membuat DNS Zone
+## Membuat DNS Zone
 
 Setelah *backend* berhasil dikonfigurasi, langkah selanjutnya adalah membuat DNS *Zone* untuk domain yang akan digunakan.
 
@@ -211,13 +343,19 @@ Kemudian buat zone domain baru dengan memasukkan query SQL berikut
 ```
 INSERT INTO domains (name, type) VALUES ('domainkamu.id', 'NATIVE');
 ```
+> **Catatan:** `domainkamu.id` hanya digunakan sebagai contoh. Silakan sesuaikan dengan domain dan IP Address yang digunakan. 
 
 Setelah itu, cek apakah zone tersebut sudah berhasil tersimpan dengan menjalankan perintah:
 ```
 SELECT * FROM domains;
 ```
+<p align="center">
+<img width="980" height="130" alt="show domain" src="https://github.com/user-attachments/assets/c0fa8c6e-057b-440e-a7ea-0e8dd86ccf05" />
+  <br>
+  <em>Gambar 9: Show Domain</em>
+</p>
 
-### Menambahkan DNS Record
+## Menambahkan DNS Record
 
 Setelah DNS *Zone* berhasil dibuat, langkah berikutnya adalah menambahkan berbagai macam DNS *Record* yang diperlukan ke dalam *database*.
 #### A Record
@@ -252,7 +390,10 @@ INSERT INTO records (domain_id, name, type, content, ttl)
 VALUES 
 (1, 'www.domainkamu.id', 'CNAME', 'domainkamu.id', 3600);
 ```
-### Mengecek DNS Zone dan Record
+> **Catatan:** `domainkamu.id` hanya digunakan sebagai contoh. Silakan sesuaikan dengan domain dan IP Address yang digunakan.
+
+
+## Mengecek DNS Zone dan Record
 Setelah seluruh *record* ditambahkan ke dalam *database*, langkah terakhir adalah memeriksa kembali seluruh data yang telah dibuat untuk memastikan semuanya sudah terkonfigurasi dengan benar.
 
 Jalankan *query* SQL berikut di dalam MariaDB:
@@ -269,8 +410,19 @@ ns1.domainkamu.id      A       IP_SERVER
 ns2.domainkamu.id      A       IP_SERVER
 www.domainkamu.id      CNAME   domainkamu.id
 ```
+> **Catatan:** Ganti `IP_SERVER` dengan IP Address publik Kilat VM yang digunakan. Pastikan nilai `ns1`, `ns2`, `www`, dan domain utama disesuaikan dengan kebutuhan konfigurasi DNS Anda.
 
-### Restart PowerDNS
+Pada konfigurasi tersebut terdapat beberapa DNS *record*:
+
+| Record / Entri | Fungsi |
+| :--- | :--- |
+| domainkamu.id  | Mengarahkan domain utama ke IP Address *server* |
+| domainkamu.id NS | Menentukan *nameserver* yang bertanggung jawab terhadap domain |
+| ns1.domainkamu.id A | Mengarahkan *nameserver* pertama ke IP Address VPS |
+| ns2.domainkamu.id A | Mengarahkan *nameserver* kedua ke IP Address VPS |
+| www.domainkamu.id CNAME | Mengarahkan `www.domainkamu.id` agar merujuk ke domain utama (`domainkamu.id`) |
+
+## Restart PowerDNS
 Setelah seluruh konfigurasi dan penambahan record selesai, lakukan restart terakhir pada service PowerDNS untuk menerapkan semua pembaruan secara sempurna, lalu pastikan kembali bahwa service telah berjalan dengan normal dan stabil:
 ```
 #systemctl restart pdns
@@ -289,7 +441,7 @@ Setelah seluruh konfigurasi dan penambahan record selesai, lakukan restart terak
 ```
 
 # 4. Verifikasi
-### Mengecek Port DNS
+## Mengecek Port DNS
 Layanan DNS menggunakan port `53` (baik protokol UDP maupun TCP) untuk menerima setiap *query* atau permintaan DNS yang masuk dari klien.
 
 Untuk mengecek apakah port tersebut sudah digunakan dan aktif oleh PowerDNS, jalankan perintah berikut di terminal:
@@ -301,7 +453,7 @@ tcp   LISTEN 0      128          0.0.0.0:53        0.0.0.0:*    users:(("pdns_se
 tcp   LISTEN 0      128             [::]:53           [::]:*    users:(("pdns_server",pid=329879,fd=8))
 ```
 
-### Pengujian DNS Server Menggunakan dig
+## Pengujian DNS Server Menggunakan dig
 
 Setelah layanan PowerDNS aktif dan seluruh konfigurasi selesai, lakukan pengujian fungsionalitas DNS menggunakan utilitas `dig`.
 
@@ -331,7 +483,7 @@ ns2.domainkamu.id
 IP_SERVER
 ```
 
-### Verifikasi Menggunakan DNS Checker
+## Verifikasi Menggunakan DNS Checker
 Apabila hasil *output* IP Address sudah mengarah ke IP Address *server* yang digunakan, maka hasil *pointing* domain sudah *resolved*.
 
 Selain itu, Anda juga dapat memeriksa hasil *pointing* lebih lanjut menggunakan *tools* berbasis web seperti [DNS Checker](https://dnschecker.org/). Jika sudah resolved semua, maka akan ditandai dengan centang warna hijau secara keseluruhan pada tool DNS Checker seperti pada Gambar 26.
@@ -350,11 +502,3 @@ Dengan memahami konsep dan cara kerja PowerDNS, kamu bisa membangun layanan DNS 
 Setelah PowerDNS berhasil dikonfigurasi, kamu dapat mengelola domain, nameserver, serta DNS record melalui database dan melakukan pengecekan untuk memastikan layanan DNS berjalan dengan baik.
 
 Sekian, dan semoga bermanfaat.
-
-
-## Inline code
-
-This web site is using `markedjs/marked`.
-<img width="1366" height="287" alt="isi nano" src="https://github.com/user-attachments/assets/1439c605-b827-48d5-9f25-b1ba3a784a03" />
-
-
