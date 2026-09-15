@@ -1,4 +1,5 @@
 
+
 # Instalasi dan Konfigurasi DNS Server Menggunakan PowerDNS pada Ubuntu 24.04 LTS
 
 Pelajari cara instalasi dan konfigurasi DNS Server menggunakan BIND di Kilat VM 2.0 berbasis Ubuntu 18.04. Panduan lengkap mulai dari persiapan, setup Glue Record, hingga konfigurasi zona domain.
@@ -135,7 +136,7 @@ Tunggu proses update hingga benar-benar selesai, dan selanjutnya install paket P
 apt install pdns-server
 ```
 
-tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 2:
+tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 3:
 <p align="center">
   <img width="1202" height="241" alt="install powerdns (y)" src="https://github.com/user-attachments/assets/222dbb7f-2e98-4efb-ae31-1da58e6d8bd5" />
   <br>
@@ -181,7 +182,7 @@ Instal MariaDB dengan menjalankan perintah berikut:
 ```
 apt install mariadb-server
 ```
-tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 4:
+tekan **Y** apabila diminta untuk melanjutkan proses instalasi seperti pada Gambar 5:
 <p align="center">
 <img width="1359" height="387" alt="install mariadb" src="https://github.com/user-attachments/assets/fb97b494-bee4-4303-a91a-c1daa909f4b0" />
   <br>
@@ -486,9 +487,13 @@ IP_SERVER
 ## Verifikasi Menggunakan DNS Checker
 Apabila hasil *output* IP Address sudah mengarah ke IP Address *server* yang digunakan, maka hasil *pointing* domain sudah *resolved*.
 
-Selain itu, Anda juga dapat memeriksa hasil *pointing* lebih lanjut menggunakan *tools* berbasis web seperti [DNS Checker](https://dnschecker.org/). Jika sudah resolved semua, maka akan ditandai dengan centang warna hijau secara keseluruhan pada tool DNS Checker seperti pada Gambar 26.
+Selain itu, Anda juga dapat memeriksa hasil *pointing* lebih lanjut menggunakan *tools* berbasis web seperti [DNS Checker](https://dnschecker.org/). Jika sudah resolved semua, maka akan ditandai dengan centang warna hijau secara keseluruhan pada tool DNS Checker seperti pada Gambar 10.
 
-GAMBAR
+<p align="center">
+<img width="1163" height="645" alt="dns checker" src="https://github.com/user-attachments/assets/6984dd71-721e-49a7-8e96-056246bc5022" />
+  <br>
+  <em>Gambar 10: DNS CHECKER</em>
+</p>
 
 Apabila dari hasil verifikasi, hasil pointing domain masih belum mengarah ke IP Address server yang digunakan atau masih belum terdapat tanda centang hijau secara keseluruhan pada tool DNS Checker, biasanya hal tersebut masih berada dalam proses propagasi.
 
@@ -496,9 +501,95 @@ Apabila dari hasil verifikasi, hasil pointing domain masih belum mengarah ke IP 
 >
 >> _Proses propagasi ini dipengaruhi oleh beberapa faktor, yaitu pengaturan TTL (Time to Live), jaringan ISP, serta pihak Registry domain. Waktu yang dibutuhkan untuk proses propagasi ini biasanya memakan waktu kurang lebih hingga 48 jam._
 
+# Troubleshooting
+
+### PowerDNS tidak berjalan
+Jika *service* PowerDNS gagal berjalan atau mengalami *stop*, periksa status *service* terlebih dahulu:
+```
+systemctl status pdns
+````
+
+> **Verifikasi:** Pastikan status *service* menunjukkan *active (running)*. Jika terdapat galat *(error)*, periksa detail log *service* menggunakan perintah:
+>
+
+```
+journalctl -u pdns -n 50 --no-pager
+````
+
+### PowerDNS gagal terhubung ke 
+Jika PowerDNS tidak dapat mengakses atau terhubung ke database MariaDB, periksa file konfigurasi utama PowerDNS:
+```
+nano /etc/powerdns/pdns.conf
+````
+
+Pastikan parameter koneksi database berikut sudah terkonfigurasi dengan benar:
+```
+launch=gmysql
+gmysql-host=127.0.0.1
+gmysql-user=powerdns
+gmysql-password=PASSWORD_ANDA
+gmysql-dbname=powerdns
+````
+
+> **Catatan:** Ganti PASSWORD_ANDA dengan kata sandi yang sesuai dengan konfigurasi user database Anda.
+>
+
+Setelah memastikan konfigurasi sudah benar, restart service PowerDNS:
+```
+systemctl restart pdns
+````
+
+> **Verifikasi:** Cek kembali status PowerDNS untuk memastikan ia berhasil berjalan dengan backend database.
+>
+
+### Port *53* Sudah Digunakan
+Jika port *53* sudah digunakan oleh layanan lain (seperti `systemd-resolved`), PowerDNS tidak akan bisa berjalan. Periksa penggunaan port *53* pada server:
+```
+ss -lntup | grep ':53'
+````
+
+> **Verifikasi:** Jika port *53* terpakai oleh proses lain, nonaktifkan DNS Stub Listener pada `systemd-resolved` melalui file `/etc/systemd/resolved.conf` dengan mengubah baris `DNSStubListener=no`, lalu restart service terkait.
+>
+
+### DNS tidak memberikan response
+Jika DNS tidak dapat diakses atau tidak memberikan respon dari luar:
+1. Lakukan pengujian query langsung ke IP server:
+```
+dig @IP_SERVER domainkamu.id
+````
+
+2. Pastikan hal-hal berikut dalam kondisi normal:
+    * Status service PowerDNS dalam keadaan active (running).
+    * PowerDNS mendengarkan (listen) pada port 53.
+    * Port 53 (TCP/UDP) sudah dibuka pada firewall.
+    * Konfigurasi DNS Zone, DNS Record, database, dan nameserver sudah sesuai.
+
+### Domain belum dapat diakses
+Jika domain masih belum dapat diakses atau perubahan record belum terlihat:
+1. Periksa nameserver domain:
+```
+dig domainkamu.id NS
+````
+
+2. Periksa A Record domain:
+```
+dig domainkamu.id A
+````
+
+> **Verifikasi:** Pastikan hasil output sudah mengarah ke alamat IP publik Kilat VM Anda.
+>
+
+Jika konfigurasi sudah dipastikan benar tetapi perubahan belum terlihat dari jaringan luar atau resolver tertentu, kemungkinan besar domain Anda masih berada dalam proses propagasi (waktu yang dibutuhkan oleh internet/ISP untuk mengenali perubahan record DNS yang baru, yang biasanya membutuhkan waktu hingga 48 jam).
+
 # Kesimpulan
 Dengan memahami konsep dan cara kerja PowerDNS, kamu bisa membangun layanan DNS Authoritative pada VPS secara lebih fleksibel dan terkelola. Dengan dukungan MariaDB sebagai backend, konfigurasi zone dan record DNS dapat disimpan serta dikelola dengan lebih terstruktur sesuai kebutuhan.
 
 Setelah PowerDNS berhasil dikonfigurasi, kamu dapat mengelola domain, nameserver, serta DNS record melalui database dan melakukan pengecekan untuk memastikan layanan DNS berjalan dengan baik.
+
+# Referensi
+
+* [PowerDNS Official Website](https://www.powerdns.com/)
+* [PowerDNS GitHub Releases](https://github.com/PowerDNS/pdns)
+* [KB - Cara Menggunakan Private Name Server pada Domain di Portal Client CloudKilat](https://kb.cloudkilat.id/domain-di-cloudkilat/cara-menggunakan-private-name-server-pada-domain-di-portal-client-cloudkilat)
 
 Sekian, dan semoga bermanfaat.
